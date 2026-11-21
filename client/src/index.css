@@ -1,0 +1,160 @@
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&family=DM+Serif+Display:ital@0;1&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --color-fbr-green: #06452b;
+  --color-fbr-green-light: #0b6840;
+  --color-fbr-green-lighter: #39815f;
+  --color-fbr-gold: #d1ad56;
+  --color-fbr-gold-dark: #96742b;
+  --color-fbr-bg: #f4f7f4;
+  --color-fbr-bg-dark: #e9efea;
+  --color-fbr-text: #17281e;
+  --color-fbr-text-light: #66746b;
+  --color-fbr-border: #dce5dd;
+  --color-fbr-success: #16834b;
+  --color-fbr-error: #c33b35;
+  --color-fbr-warning: #b8791b;
+
+  --font-sans: "Outfit", sans-serif;
+  --font-serif: "DM Serif Display", serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: var(--color-fbr-bg);
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  color: var(--color-fbr-text);
+  background-color: var(--color-fbr-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-fbr-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-fbr-green-lighter);
+  border-radius: 3px;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+a,
+button {
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-fbr-gold) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.flex-center {
+  @apply flex items-center justify-center;
+}
+
+.dropdown-link {
+  @apply flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-500 hover:bg-emerald-50/80 hover:text-zinc-900 transition-colors;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+.animate-slide-in-right {
+  animation: slideInRight 0.3s ease-out forwards;
+}
+.animate-slide-in-up {
+  animation: slideInUp 0.4s ease-out forwards;
+}
+.animate-pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+/* Reusable form styles */
+.fbr-input {
+  @apply w-full rounded-xl border border-fbr-border bg-white px-4 py-3 text-sm shadow-sm
+           placeholder:text-fbr-text-light/70 focus:border-fbr-green-lighter focus:ring-4 focus:ring-fbr-green-lighter/10;
+}
+.fbr-btn {
+  @apply inline-flex items-center justify-center rounded-xl bg-fbr-green px-5 py-3 text-sm font-semibold text-white shadow-sm
+           hover:-translate-y-0.5 hover:bg-fbr-green-light hover:shadow-md disabled:translate-y-0 disabled:opacity-60;
+}
+.fbr-btn-secondary {
+  @apply inline-flex items-center justify-center rounded-xl border border-fbr-border bg-white px-5 py-3 text-sm font-semibold text-fbr-text shadow-sm
+           hover:border-fbr-green-lighter hover:bg-fbr-bg;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
