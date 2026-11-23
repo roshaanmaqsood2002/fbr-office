@@ -25,6 +25,9 @@ const schema = z.object({
   FBR_RETRY_BASE_SECONDS: z.coerce.number().default(30),
   FBR_API_BASE_SANDBOX: z.string().optional(),
   FBR_API_BASE_PRODUCTION: z.string().optional(),
+  FBR_GATEWAY_URL: z.string().default("https://gw.fbr.gov.pk"),
+  FBR_SANDBOX_SUFFIX: z.string().default("_sb"),
+  FBR_HTTP_TIMEOUT_MS: z.coerce.number().default(30000),
 });
 
 const parsed = schema.safeParse(process.env);

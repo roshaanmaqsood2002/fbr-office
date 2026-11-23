@@ -18,6 +18,8 @@ const submissionSchema = new Schema(
     businessId: { type: Schema.Types.ObjectId, ref: 'Business', required: true },
     invoiceId: { type: Schema.Types.ObjectId, ref: 'Invoice', required: true },
     environment: { type: String, enum: ['sandbox', 'production'], required: true },
+    scenarioId: String, 
+    outcome: { type: String, enum: ['accepted', 'rejected', 'transient_error', 'permanent_error', 'unknown_outcome', 'blocked'] },
     status: { type: String, enum: ['queued', 'processing', 'accepted', 'rejected', 'failed'], default: 'queued' },
     fbrStatus: { type: String, enum: ['pending', 'accepted', 'rejected'], default: 'pending' }, // FBR's verdict
     // True while queued, processing or accepted: at most one such submission per invoice

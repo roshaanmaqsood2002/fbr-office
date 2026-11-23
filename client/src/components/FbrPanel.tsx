@@ -5,16 +5,18 @@ import { useAuth } from '../context/AuthContext';
 import { can } from '../lib/permissions';
 import type { Invoice } from '../lib/invoice';
 import { formatMoney } from '../lib/money';
-import Modal from './Modal';
+import { useFbrReference } from '../lib/useFbrReference';
 
 type Env = 'sandbox' | 'production';
 
 export default function FbrPanel({ businessId, invoice, onChanged }: { businessId: string; invoice: Invoice; onChanged: () => void }) {
   const { user } = useAuth();
+  const ref = useFbrReference();
   const canSubmit = can(user?.role, 'fbr.submit');
   const canRevise = can(user?.role, 'invoice.write');
   const [connected, setConnected] = useState<Env[]>([]);
   const [env, setEnv] = useState<Env>('sandbox');
+  const [scenarioId, setScenarioId] = useState('');
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const s = invoice.status;
@@ -44,6 +46,7 @@ export default function FbrPanel({ businessId, invoice, onChanged }: { businessI
   };
 
   if (!['ready_to_submit', 'submitted', 'accepted', 'rejected', 'action_required'].includes(s)) return null;
+  const needsScenario = env === 'sandbox';
 
   return (
     <section className="space-y-3 rounded-xl border border-fbr-gold/40 bg-white p-4 text-sm">
@@ -53,33 +56,29 @@ export default function FbrPanel({ businessId, invoice, onChanged }: { businessI
         <p className="text-fbr-text-light">Connect FBR for this client first (client page → FBR tab).</p>
       ) : !canSubmit ? (
         <p className="text-fbr-text-light">You do not have permission to submit to FBR.</p>
-      ) : (
+      ) : !confirm ? (
         <div className="flex flex-wrap items-center gap-3">
           <select className="fbr-input w-44" value={env} onChange={(e) => setEnv(e.target.value as Env)}>
             {connected.map((e) => <option key={e} value={e}>{e}</option>)}
           </select>
-          <button className="fbr-btn sm:w-auto" onClick={() => setConfirm(true)}>Submit to FBR…</button>
+          {needsScenario && (
+            <select className="fbr-input w-full sm:w-96" value={scenarioId} onChange={(e) => setScenarioId(e.target.value)}>
+              <option value="">Sandbox test scenario *</option>
+              {ref?.scenarios.map((sc) => <option key={sc.id} value={sc.id}>{sc.id}: {sc.description}</option>)}
+            </select>
+          )}
+          <button className="fbr-btn w-auto" disabled={needsScenario && !scenarioId} onClick={() => setConfirm(true)}>Submit to FBR…</button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p>Send <b>{invoice.invoiceNumber}</b> to <b>{invoice.buyer.name}</b> for <b>{formatMoney(invoice.totals.gross)}</b> to FBR ({env}{needsScenario && `, ${scenarioId}`})?</p>
+          {env === 'production' && <p className="text-fbr-warning">⚠ This is the production environment. It is a real tax filing and the invoice can no longer be edited once sent.</p>}
+          <div className="flex gap-3">
+            <button className="fbr-btn w-auto" disabled={busy} onClick={() => act('submit', { environment: env, ...(needsScenario && { scenarioId }) }, 'Queued for FBR')}>{busy ? 'Sending…' : 'Yes, submit'}</button>
+            <button className="text-fbr-text-light" onClick={() => setConfirm(false)}>Back</button>
+          </div>
         </div>
       ))}
-
-      <Modal
-        open={confirm}
-        title={`Submit invoice to FBR (${env})?`}
-        description={`Send ${invoice.invoiceNumber} to ${invoice.buyer.name} for ${formatMoney(invoice.totals.gross)}.`}
-        onClose={() => setConfirm(false)}
-      >
-        {env === 'production' && (
-          <p className="rounded-xl border border-fbr-warning/30 bg-fbr-warning/10 p-4 text-sm text-fbr-warning">
-            This is the production environment. The invoice can no longer be edited once sent.
-          </p>
-        )}
-        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <button className="fbr-btn-secondary" onClick={() => setConfirm(false)}>Go back</button>
-          <button className="fbr-btn sm:w-auto" disabled={busy} onClick={() => act('submit', { environment: env }, 'Queued for FBR')}>
-            {busy ? 'Sending…' : 'Yes, submit'}
-          </button>
-        </div>
-      </Modal>
 
       {s === 'submitted' && <p className="animate-pulse-soft">Submitted. Waiting for FBR’s response…</p>}
       {s === 'accepted' && <p>✔ Accepted by FBR. FBR invoice number: <b>{invoice.fbrInvoiceNumber}</b></p>}

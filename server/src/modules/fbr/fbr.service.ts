@@ -11,6 +11,7 @@ import { assertTransition } from "../invoices/invoices.states";
 import { runValidation } from "../invoices/invoice.service";
 import { FbrEnvironment, getFbrClient } from "./fbr.client";
 import { buildFbrPayload } from "./fbr.mapper";
+import { SCENARIOS } from "./fbr.reference";
 
 const scope = (b: BusinessDoc) => ({ firmId: b.firmId, businessId: b._id });
 
@@ -114,6 +115,7 @@ export async function submitInvoice(
   b: BusinessDoc,
   invoiceId: string,
   environment: FbrEnvironment,
+  scenarioId?: string,
 ) {
   if (!Types.ObjectId.isValid(invoiceId))
     throw new AppError(404, "Invoice not found");
@@ -149,6 +151,9 @@ export async function submitInvoice(
     );
   if (!inv.totals) throw new AppError(422, "Invoice totals are missing");
 
+  if (environment === 'sandbox' && !SCENARIOS.some((s) => s.id === scenarioId))
+    throw new AppError(400, 'Choose the sandbox test scenario this invoice represents');
+
   // 1) Create the submission first: the unique index is what prevents double submission
   let sub;
   try {
@@ -158,8 +163,11 @@ export async function submitInvoice(
       environment,
       status: "queued",
       active: true,
-      requestSnapshot: buildFbrPayload(inv.toObject() as never, b),
-      invoiceNumber: inv.invoiceNumber,
+      requestSnapshot: buildFbrPayload(inv.toObject() as never, b as never, {
+        environment,
+        scenarioId,
+      }),
+      scenarioId: environment === "sandbox" ? scenarioId : undefined,
       buyerName: inv.buyer.name,
       gross: inv.totals.gross,
       submittedBy: a.userId,

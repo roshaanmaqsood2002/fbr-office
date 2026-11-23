@@ -12,8 +12,9 @@ export const fbrRouter = Router({ mergeParams: true });
 
 const environment = z.enum(['sandbox', 'production']);
 const tokenBody = z.object({ token: z.string().trim().min(8, 'Token looks too short').max(2000) });
-const submitBody = z.object({ environment });
+const submitBody = z.object({ environment, scenarioId: z.string().optional() });
 const envParam = (v: unknown) => environment.parse(v);
+
 
 fbrRouter.get('/integrations', requirePermission('fbr.read'), asyncHandler(async (req, res) => {
   res.json({ adapter: env.FBR_ADAPTER, integrations: await s.listIntegrations(req.business!) });
@@ -37,7 +38,7 @@ fbrRouter.get('/submissions', requirePermission('fbr.read'), asyncHandler(async 
 }));
 
 fbrRouter.post('/invoices/:invoiceId/submit', requirePermission('fbr.submit'), requireActiveBusiness, validate(submitBody), asyncHandler(async (req, res) => {
-  const sub = await s.submitInvoice(req.auth!, req.business!, String(req.params.invoiceId), req.body.environment);
+  const sub = await s.submitInvoice(req.auth!, req.business!, String(req.params.invoiceId), req.body.environment, req.body.scenarioId);
   res.status(202).json({ submissionId: sub._id });
 }));
 

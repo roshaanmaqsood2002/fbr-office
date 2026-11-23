@@ -21,11 +21,15 @@ import LinesEditor, {
 } from "../components/LinesEditor";
 import FbrPanel from "../components/FbrPanel";
 import Modal from "../components/Modal";
+import { useFbrReference } from '../lib/useFbrReference';
+
 
 export default function InvoiceDetail() {
   const { id = "", invoiceId = "" } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const ref = useFbrReference();
+
   const base = `/businesses/${id}/invoices/${invoiceId}`;
   const [inv, setInv] = useState<Invoice | null>(null);
   const [issues, setIssues] = useState<{
@@ -41,6 +45,7 @@ export default function InvoiceDetail() {
   const [reason, setReason] = useState("");
   const [reasonFor, setReasonFor] = useState<"return" | "cancel" | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [saleType, setSaleType] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -82,6 +87,8 @@ export default function InvoiceDetail() {
     setRows(linesToRows(inv.lines));
     setIssueDate(inv.issueDate.slice(0, 10));
     setNotes(inv.notes ?? "");
+    setSaleType(inv.saleType ?? "Goods at standard rate (default)");
+
     try {
       setProducts(
         (await api.get(`/businesses/${id}/products`, { params: { limit: 50 } }))
@@ -103,6 +110,7 @@ export default function InvoiceDetail() {
           buyer: { ...b, ...(customerId && { customerId }) },
           lines: r.lines,
           issueDate,
+          saleType,
           notes,
         }),
       "Draft saved",
@@ -334,6 +342,9 @@ export default function InvoiceDetail() {
         <div className="space-y-5">
           <BuyerFields value={buyer} onChange={setBuyer} />
           <LinesEditor rows={rows} onChange={setRows} products={products} />
+          <select className="fbr-input" value={saleType} onChange={(e) => setSaleType(e.target.value)}>
+            {ref?.saleTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
           <div className="grid gap-3 sm:grid-cols-2">
             <input
               className="fbr-input"

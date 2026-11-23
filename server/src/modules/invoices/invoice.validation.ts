@@ -1,34 +1,46 @@
 import { calcLine } from '../../utils/money';
+import { PROVINCES, canonicalProvince } from '../fbr/fbr.reference';
 
 export interface Issue { field: string; message: string }
 
 interface InvoiceLike {
-  buyer: { name?: string | null; registrationType?: string | null; ntn?: string | null; address?: string | null };
+  buyer: { name?: string | null; registrationType?: string | null; ntn?: string | null; address?: string | null; province?: string | null };
   lines: { description: string; hsCode?: string | null; uom?: string | null; quantity: number; unitPrice: number; taxRatePercent: number; net: number; tax: number; gross: number }[];
   totals: { net: number; tax: number; gross: number };
   issueDate: Date;
 }
 
 interface Ctx {
-  business: { status: string; ntn?: string | null; strn?: string | null };
+  business: { status: string; ntn?: string | null; strn?: string | null; address?: { line1?: string | null; province?: string | null } | null };
   hasActiveAuthorization: boolean;
 }
 
-// Rules here are placeholders for the FBR rules; align them with the official spec in Phase 0
+const digits = (s?: string | null) => (s ?? '').replace(/\D/g, '');
+const VALID_REG_LENGTHS = [7, 9, 13]; // NTN is 7 or 9 digits, CNIC is 13
+
 export function validateInvoice(inv: InvoiceLike, ctx: Ctx) {
   const errors: Issue[] = [];
   const warnings: Issue[] = [];
 
   if (ctx.business.status !== 'active') errors.push({ field: 'business', message: 'This client is not active' });
-  if (!ctx.business.ntn) errors.push({ field: 'business', message: 'The client has no NTN' });
   if (!ctx.hasActiveAuthorization) errors.push({ field: 'authorization', message: 'No active authorization on file for this client' });
   if (!ctx.business.strn) warnings.push({ field: 'business', message: 'The client has no STRN recorded' });
 
-  if (!inv.buyer?.name) errors.push({ field: 'buyer.name', message: 'Buyer name is required' });
-  if (inv.buyer?.registrationType === 'registered' && !inv.buyer.ntn)
-    errors.push({ field: 'buyer.ntn', message: 'A registered buyer needs an NTN' });
-  if (!inv.buyer?.address) warnings.push({ field: 'buyer.address', message: 'Buyer address is missing' });
+  // Seller (the client business)
+  if (!ctx.business.ntn) errors.push({ field: 'business.ntn', message: 'The client has no NTN' });
+  else if (!VALID_REG_LENGTHS.includes(digits(ctx.business.ntn).length)) errors.push({ field: 'business.ntn', message: 'The client NTN/CNIC must have 7, 9 or 13 digits' });
+  if (!ctx.business.address?.line1) errors.push({ field: 'business.address', message: 'The client address is required by FBR' });
+  if (!PROVINCES.includes(canonicalProvince(ctx.business.address?.province))) errors.push({ field: 'business.province', message: 'Select the client province' });
 
+  // Buyer
+  if (!inv.buyer?.name) errors.push({ field: 'buyer.name', message: 'Buyer name is required' });
+  if (inv.buyer?.registrationType === 'registered' && !inv.buyer.ntn) errors.push({ field: 'buyer.ntn', message: 'A registered buyer needs an NTN' });
+  if (inv.buyer?.ntn && !VALID_REG_LENGTHS.includes(digits(inv.buyer.ntn).length)) errors.push({ field: 'buyer.ntn', message: 'The buyer NTN/CNIC must have 7, 9 or 13 digits' });
+  if (!inv.buyer?.address) errors.push({ field: 'buyer.address', message: 'Buyer address is required by FBR' });
+  if (!PROVINCES.includes(canonicalProvince(inv.buyer?.province))) errors.push({ field: 'buyer.province', message: 'Select the buyer province' });
+  if (digits(inv.buyer?.ntn) && digits(inv.buyer?.ntn) === digits(ctx.business.ntn)) errors.push({ field: 'buyer.ntn', message: 'Buyer and seller cannot be the same (FBR rejects self-invoicing)' });
+
+  // Lines
   if (inv.lines.length === 0) errors.push({ field: 'lines', message: 'Add at least one line' });
   inv.lines.forEach((l, i) => {
     const n = i + 1;

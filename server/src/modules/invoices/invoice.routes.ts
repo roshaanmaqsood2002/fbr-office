@@ -8,6 +8,7 @@ import { paging, str } from '../../utils/query';
 import * as s from './invoice.service';
 import { streamInvoicePdf } from './invoice.pdf';
 import { createInvoiceSchema, reasonSchema, updateInvoiceSchema } from './invoice.schema';
+import QRCode from 'qrcode';
 
 export const invoiceRouter = Router({ mergeParams: true });
 const id = (req: { params: Record<string, unknown> }) => String(req.params.id);
@@ -51,4 +52,8 @@ invoiceRouter.get('/:id/pdf', requirePermission('invoice.read'), asyncHandler(as
   const inv = await s.getInvoiceDetail(b, id(req));
   const firm = await Firm.findById(b.firmId).select('name').lean();
   streamInvoicePdf(res, inv as never, { name: b.legalName, ntn: b.ntn, strn: b.strn, firmName: firm?.name ?? '' });
+  const qr = (inv as { fbrInvoiceNumber?: string }).fbrInvoiceNumber
+  ? await QRCode.toBuffer((inv as { fbrInvoiceNumber: string }).fbrInvoiceNumber, { version: 2, errorCorrectionLevel: 'M', margin: 0, scale: 8 })
+  : undefined;
+streamInvoicePdf(res, inv as never, { name: b.legalName, ntn: b.ntn, strn: b.strn, firmName: firm?.name ?? '' }, qr);
 }));

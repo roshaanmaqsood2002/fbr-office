@@ -26,6 +26,7 @@ export interface Invoice {
   fbrLastError?: string;
   status: string;
   issueDate: string;
+  saleType?: string;
   dueDate?: string;
   notes?: string;
   returnReason?: string;

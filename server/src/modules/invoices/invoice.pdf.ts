@@ -38,6 +38,7 @@ export function streamInvoicePdf(
   res: Response,
   inv: PdfInvoice,
   seller: { name: string; ntn: string; strn?: string | null; firmName: string },
+  qrPng?: Buffer
 ) {
   const doc = new PDFDocument({ size: "A4", margin: 40 });
   const fileName = (inv.invoiceNumber ?? "draft-invoice").replace(
@@ -74,6 +75,13 @@ export function streamInvoicePdf(
     .filter(Boolean)
     .join(", ");
   if (addr) doc.text(addr);
+
+  if (qrPng) {
+  if (doc.y > 680) doc.addPage();
+  const y0 = doc.y + 15;
+  doc.image(qrPng, 40, y0, { width: 72, height: 72 }); // 1 inch, as the spec requires
+  doc.fontSize(7).fillColor('#555').text('FBR Digital Invoicing System', 40, y0 + 76);
+}
 
   // Table
   const cols = [

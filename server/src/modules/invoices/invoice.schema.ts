@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Types } from 'mongoose';
 import { ntnField } from '../../utils/validators';
 import { lineSchema } from '../transactions/transaction.schema';
+import { SALE_TYPES } from '../fbr/fbr.reference';
 
 const objectId = z.string().refine((v) => Types.ObjectId.isValid(v), 'Invalid id');
 
@@ -42,6 +43,7 @@ export const updateInvoiceSchema = z
     lines: z.array(invoiceLineSchema).min(1).max(200).optional(),
     issueDate: z.coerce.date().optional(),
     dueDate: z.coerce.date().nullable().optional(),
+    saleType: z.enum(SALE_TYPES).optional(),
     notes: z.string().trim().max(500).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, 'Nothing to update');

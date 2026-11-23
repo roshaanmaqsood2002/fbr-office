@@ -11,16 +11,14 @@ import { FbrResult, getFbrClient } from './fbr.client';
 import { FbrPayload } from './fbr.mapper';
 
 const STALE_LOCK_MS = 5 * 60_000;
+const UNKNOWN_HINT = ' The outcome is unknown: check the FBR portal for this invoice before submitting again, to avoid a duplicate.';
 
-async function claimNext() {
-  const now = new Date();
-  // Atomic claim: safe even with several server instances. A job stuck in "processing" is retaken after 5 minutes.
-  return FbrSubmission.findOneAndUpdate(
-    { $or: [{ status: 'queued', nextRunAt: { $lte: now } }, { status: 'processing', lockedAt: { $lt: new Date(now.getTime() - STALE_LOCK_MS) } }] },
-    { $set: { status: 'processing', lockedAt: now } },
+const claimNext = () =>
+  FbrSubmission.findOneAndUpdate(
+    { status: 'queued', nextRunAt: { $lte: new Date() } },
+    { $set: { status: 'processing', lockedAt: new Date() } },
     { sort: { nextRunAt: 1 }, returnDocument: 'after' },
   );
-}
 type Job = NonNullable<Awaited<ReturnType<typeof claimNext>>>;
 
 const truncate = (v: unknown) => { try { return JSON.stringify(v ?? null).slice(0, 4000); } catch { return ''; } };
@@ -32,6 +30,27 @@ async function setInvoice(job: Job, to: InvoiceStatus, set: Record<string, unkno
   await Invoice.updateOne({ _id: job.invoiceId, firmId: job.firmId, businessId: job.businessId, status: 'submitted' }, { $set: { status: to, ...set } });
 }
 
+type Outcome = 'blocked' | 'permanent_error' | 'transient_error' | 'unknown_outcome';
+
+async function failJob(job: Job, outcome: Outcome, message: string, startedAt: Date, extra: { httpStatus?: number; raw?: unknown } = {}) {
+  await FbrSubmission.updateOne(
+    { _id: job._id },
+    {
+      $push: { attempts: { at: startedAt, finishedAt: new Date(), outcome, httpStatus: extra.httpStatus, message, raw: truncate(extra.raw) } },
+      $set: { status: 'failed', active: false, lastError: message, completedAt: new Date(), lockedAt: null },
+    },
+  );
+  await setInvoice(job, 'action_required', { fbrLastError: message });
+  await audit(actorFor(job), { action: 'fbr.failed', entityType: 'invoice', entityId: job.invoiceId, businessId: job.businessId, summary: `FBR submission of ${job.invoiceNumber} needs attention: ${message}` });
+}
+
+// A job still "processing" means the worker stopped mid-request. We cannot know whether FBR received it and the
+// API has no idempotency key, so it is never resent automatically.
+async function failStaleJobs() {
+  const stale = await FbrSubmission.find({ status: 'processing', lockedAt: { $lt: new Date(Date.now() - STALE_LOCK_MS) } });
+  for (const job of stale) await failJob(job, 'unknown_outcome', `The server stopped while sending this invoice to FBR.${UNKNOWN_HINT}`, new Date());
+}
+
 async function processJob(job: Job) {
   const attemptNo = job.attempts.length + 1;
   const startedAt = new Date();
@@ -40,11 +59,6 @@ async function processJob(job: Job) {
       { _id: job._id },
       { $push: { attempts: { at: startedAt, finishedAt: new Date(), outcome, httpStatus: extra.httpStatus, message: extra.message, raw: truncate(extra.raw) } }, $set: { lockedAt: null, ...set } },
     );
-  const giveUp = async (outcome: string, message: string, extra: { httpStatus?: number; raw?: unknown } = {}) => {
-    await record(outcome, { ...extra, message }, { status: 'failed', active: false, lastError: message, completedAt: new Date() });
-    await setInvoice(job, 'action_required', { fbrLastError: message });
-    await audit(actorFor(job), { action: 'fbr.failed', entityType: 'invoice', entityId: job.invoiceId, businessId: job.businessId, summary: `FBR submission of ${job.invoiceNumber} needs attention: ${message}` });
-  };
 
   // Re-checked on EVERY attempt, so a revoked authorization or disconnected FBR stops submissions immediately
   const [business, authorized, integ] = await Promise.all([
@@ -56,13 +70,14 @@ async function processJob(job: Job) {
     : !authorized ? 'The client authorization was revoked'
     : !integ || integ.status !== 'connected' || !integ.credentials?.token ? 'The FBR connection is not available'
     : null;
-  if (blocker) return giveUp('blocked', blocker);
+  if (blocker) return failJob(job, 'blocked', blocker, startedAt);
 
   let result: FbrResult;
   try {
     result = await getFbrClient().submit(job.environment, { token: decryptSecret(integ!.credentials!.token!) }, job.requestSnapshot as FbrPayload, job._id.toString());
   } catch (e) {
-    result = { transport: 'error', retryable: true, message: (e as Error).message };
+    // We do not know how far the request got
+    result = { transport: 'error', retryable: false, outcomeUnknown: true, message: (e as Error).message };
   }
 
   if (result.transport === 'ok' && result.accepted) {
@@ -74,7 +89,7 @@ async function processJob(job: Job) {
 
   if (result.transport === 'ok') {
     // FBR's business verdict is "no": never retried
-    const message = (result.errors ?? []).slice(0, 3).map((e) => e.message).join('; ') || 'Rejected by FBR';
+    const message = (result.errors ?? []).slice(0, 3).map((e) => (e.code ? `[${e.code}] ${e.message}` : e.message)).join('; ') || 'Rejected by FBR';
     await record('rejected', { ...result, message }, { status: 'rejected', active: false, fbrStatus: 'rejected', errors: result.errors ?? [], lastError: message, completedAt: new Date() });
     await setInvoice(job, 'rejected', { fbrLastError: message });
     await audit(actorFor(job), { action: 'fbr.rejected', entityType: 'invoice', entityId: job.invoiceId, businessId: job.businessId, summary: `FBR rejected ${job.invoiceNumber}: ${message}` });
@@ -82,12 +97,16 @@ async function processJob(job: Job) {
   }
 
   const message = result.message ?? 'Could not reach FBR';
+  if (result.outcomeUnknown) return failJob(job, 'unknown_outcome', `${message}${UNKNOWN_HINT}`, startedAt, result);
+
   if (result.retryable && attemptNo < env.FBR_MAX_ATTEMPTS) {
     await record('transient_error', result, { status: 'queued', nextRunAt: new Date(Date.now() + backoffMs(attemptNo)), lastError: message });
     return;
   }
-  if (result.httpStatus === 401) await FbrIntegration.updateOne({ businessId: job.businessId, environment: job.environment }, { $set: { status: 'error', lastTestMessage: message } });
-  await giveUp(result.retryable ? 'transient_error' : 'permanent_error', result.retryable ? `${message} (gave up after ${attemptNo} attempts)` : message, result);
+  if (result.httpStatus === 401) {
+    await FbrIntegration.updateOne({ businessId: job.businessId, environment: job.environment }, { $set: { status: 'error', lastTestMessage: message } });
+  }
+  return failJob(job, result.retryable ? 'transient_error' : 'permanent_error', result.retryable ? `${message} (gave up after ${attemptNo} attempts)` : message, startedAt, result);
 }
 
 export function startSubmissionWorker() {
@@ -96,6 +115,7 @@ export function startSubmissionWorker() {
 
   const tick = async () => {
     try {
+      await failStaleJobs();
       for (let i = 0; i < 10; i++) { // bounded batch per tick
         const job = await claimNext();
         if (!job) break;

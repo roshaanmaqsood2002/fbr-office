@@ -145,7 +145,8 @@ export async function updateDraft(a: Actor, b: BusinessDoc, id: string, patch: U
   if (!Types.ObjectId.isValid(id)) throw new AppError(404, 'Invoice not found');
   const $set: Record<string, unknown> = {};
   const $unset: Record<string, 1> = {};
-
+  
+if (patch.saleType) $set.saleType = patch.saleType;
   if (patch.buyer) $set.buyer = await resolveBuyer(b, patch.buyer);
   if (patch.lines) {
     await verifyProducts(b, patch.lines);

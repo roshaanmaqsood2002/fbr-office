@@ -54,6 +54,7 @@ const invoiceSchema = new Schema(
       required: true,
     },
     invoiceNumber: { type: String }, // assigned on first finalize, never reused
+    saleType: { type: String, default: 'Goods at standard rate (default)' },
     status: { type: String, enum: INVOICE_STATUSES, default: "draft" },
     issueDate: { type: Date, required: true },
     dueDate: Date,

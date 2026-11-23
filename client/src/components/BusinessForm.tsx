@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from 'react';
 import toast from 'react-hot-toast';
 import { api, getErrorMessage } from '../lib/api';
+import { useFbrReference } from '../lib/useFbrReference';
 
 export interface BusinessData {
   _id: string; legalName: string; tradeName?: string; businessType: string; ntn: string; strn?: string; status: string;
@@ -14,6 +15,7 @@ const strip = <T extends Record<string, unknown>>(o: T) =>
 export default function BusinessForm({
   initial, onSaved, submitLabel,
 }: { initial?: BusinessData; onSaved: (b: BusinessData) => void; submitLabel: string }) {
+  const ref = useFbrReference();
   const c0 = initial?.contacts?.[0];
   const [f, setF] = useState({
     legalName: initial?.legalName ?? '', tradeName: initial?.tradeName ?? '',
@@ -66,7 +68,11 @@ export default function BusinessForm({
       <input className="fbr-input" placeholder="STRN" value={f.strn} onChange={set('strn')} />
       <input className="fbr-input sm:col-span-2" placeholder="Address" value={f.line1} onChange={set('line1')} />
       <input className="fbr-input" placeholder="City" value={f.city} onChange={set('city')} />
-      <input className="fbr-input" placeholder="Province" value={f.province} onChange={set('province')} />
+      <select className="fbr-input" value={f.province} onChange={set('province')}>
+        <option value="">Province</option>
+        {f.province && !ref?.provinces.includes(f.province) && <option value={f.province}>{f.province}</option>}
+        {ref?.provinces.map((p) => <option key={p} value={p}>{p}</option>)}
+      </select>
       <input className="fbr-input" placeholder="Primary contact name" value={f.contactName} onChange={set('contactName')} />
       <input className="fbr-input" type="email" placeholder="Contact email" value={f.contactEmail} onChange={set('contactEmail')} />
       <input className="fbr-input" placeholder="Contact phone" value={f.contactPhone} onChange={set('contactPhone')} />
